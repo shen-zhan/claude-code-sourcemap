@@ -155,6 +155,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 源码:
 
 - [src/commands/compact.ts](/home/zhan/claude-code-sourcemap/src/commands/compact.ts#L18)
+- [src/services/claude.ts](/home/zhan/claude-code-sourcemap/src/services/claude.ts#L443)
 
 原文里的摘要请求:
 
@@ -167,6 +168,16 @@ Provide a detailed but concise summary of our conversation above. Focus on infor
 ```text
 You are a helpful AI assistant tasked with summarizing conversations.
 ```
+
+压缩调用还会附带 CLI 前缀 system prompt:
+
+```text
+You are Claude Code, Anthropic's official CLI for Claude.
+```
+
+源码:
+
+- [src/constants/prompts.ts](/home/zhan/claude-code-sourcemap/src/constants/prompts.ts#L12)
 
 原文里的压缩后桥接消息:
 
@@ -276,7 +287,33 @@ Remove a value from context
 - [src/commands/compact.ts](/home/zhan/claude-code-sourcemap/src/commands/compact.ts#L26)
 - [src/screens/REPL.tsx](/home/zhan/claude-code-sourcemap/src/screens/REPL.tsx#L264)
 
-## 5. 为什么这样设计
+## 5. 它为什么不是无损压缩
+
+严格说，`/compact` 不是可逆压缩，而是摘要压缩。
+
+原因有三点:
+
+1. 它把自然语言摘要当作压缩结果，没有把原始消息序列编码成可逆结构。
+2. 它在压缩后清空旧 messages，原始细节不会继续保留在上下文里。
+3. 它没有保留可恢复原文的索引、哈希或反向映射。
+
+它尽量减少信息损失的方法是:
+
+1. 摘要请求明确要求保留“做了什么、正在做什么、涉及哪些文件、下一步是什么”。
+2. 摘要 system prompt 把任务限定为“总结对话”。
+3. `maxThinkingTokens` 被设为 `0`，避免发散推理。
+4. 压缩后会重新读取 `CLAUDE.md` 和 `context`，把长期记忆恢复回来。
+5. 对话日志会单独写到本地缓存，便于事后回看。
+
+日志相关源码:
+
+- [src/utils/log.ts](/home/zhan/claude-code-sourcemap/src/utils/log.ts#L1)
+
+所以更准确的说法是:
+
+`/compact` 做的是“语义保留最大化”的摘要重写，不是数学意义上的无损压缩。
+
+## 6. 为什么这样设计
 
 这个设计的目的不是“让模型自己记住一切”，而是把记忆拆开:
 
@@ -292,9 +329,8 @@ Remove a value from context
 3. 压缩后的摘要仍然能继续工作。
 4. 新的 `CLAUDE.md` 修改会在下一轮自动生效。
 
-## 6. 一句话总结
+## 7. 一句话总结
 
 这个项目的记忆机制不是单点黑盒，而是:
 
 `CLAUDE.md` 负责长期知识，`context` 负责显式知识，`messages` 负责短期对话，`/compact` 负责把短期对话压缩成可继续使用的摘要。
-
